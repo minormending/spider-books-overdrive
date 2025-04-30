@@ -1,17 +1,19 @@
-# Overdrive Spider
+# Overdrive Book Scraper
 
-Scrape book metadata from multiple OverDrive library websites and store it in a local TinyDB database.
+Scrape book metadata from OverDrive-powered library websites, store structured data as individual JSON files, and index key attributes (author, title, lexile) in a fast SQLite database.
 
 ---
 
 ## Features
 
-- Scrape any number of OverDrive library websites with consistent backend
-- Extract book metadata (title, author, ISBN, etc.)
-- Automatically prevent duplicate entries by ISBN
-- Track which libraries each book was found in
-- Flexible and lightweight project structure
-- Easy to extend and maintain
+- Scrapes OverDrive search pages using a shared `window.OverDrive.mediaItems` JSON object
+- Saves each book's full metadata as a standalone `.json` file in an output directory
+- Creates a SQLite index mapping `author`, `title`, and `lexile` score to each saved file
+- Automatically sanitizes filenames for filesystem compatibility
+- Skips and logs entries that are missing key metadata (author, title, or lexile score)
+- Prevents duplicate entries using a normalized `author+title` combination
+- Provides a search script to retrieve full metadata by `author` and `title`
+- Provides a reusable module to look up lexile scores by `author` and `title` for use in other projects
 
 ---
 
@@ -21,18 +23,10 @@ Scrape book metadata from multiple OverDrive library websites and store it in a 
 - Python 3.10+
 - [Poetry](https://python-poetry.org/) for dependency management
 
-**Steps:**
-
-1. Clone the repository:
-    ```bash
-    git clone https://your-repo-url.git
-    cd overdrive-scraper
-    ```
-
-2. Install dependencies:
-    ```bash
-    poetry install
-    ```
+**Install dependencies:**
+```bash
+poetry install
+```
 
 ---
 
@@ -45,12 +39,11 @@ poetry run python src/main.py
 ```
 
 This will:
-
-- Loop through all library URLs defined in `src/config/libraries.py`
-- Fetch and parse book listings
-- Save results into `books.json` using TinyDB
-- Deduplicate books based on ISBN
-- Track all libraries where each book appears
+- Loop through the library URLs in `src/config/libraries.py`
+- Fetch all paginated book data
+- Extract metadata using embedded JSON
+- Save each book to `output/author-title-lexile.json`
+- Add the book’s author, title, lexile, and filename to `index.db`
 
 ---
 
@@ -58,65 +51,76 @@ This will:
 
 ```
 overdrive_scraper/
+├── output/                    # Full book metadata files (JSON)
+├── index.db                  # SQLite DB with indexed attributes
+├── scripts/
+│   └── search_book.py        # CLI to fetch book metadata by author + title
 ├── src/
 │   ├── config/
-│   │   └── libraries.py    # List of library base URLs
+│   │   └── libraries.py      # List of library base URLs
 │   ├── services/
-│   │   ├── fetcher.py      # Fetches HTML pages
-│   │   ├── parser.py       # Parses book metadata
-│   │   ├── db.py           # TinyDB database manager
-│   ├── utils/
-│   │   └── logger.py       # Logging setup
-│   └── main.py             # Scraper orchestration
-├── books.json              # Output TinyDB file (created after first run)
-├── pyproject.toml          # Poetry configuration
-└── README.md
+│   │   ├── fetcher.py        # Fetches HTML pages
+│   │   ├── parser.py         # Parses book metadata from script tag
+│   │   ├── files.py          # Handles saving JSON files and filenames
+│   │   ├── index.py          # Manages SQLite index
+│   │   ├── utils.py          # Lexile extraction helper
+│   │   └── lexile_lookup.py  # Reusable module to look up lexile by author/title
+│   └── main.py               # Orchestrates the scraping process
+├── README.md
+├── pyproject.toml
 ```
 
 ---
 
-## Configuration
+## Example Output
 
-- Add or update library URLs in `src/config/libraries.py`
-- Adjust query parameters if needed in `src/main.py`
+Sample JSON filename:
+```
+output/gregory-maguire_wicked_890.json
+```
 
-Example of query parameters:
+Example SQLite row:
+```
+author: "gregory maguire"
+title: "wicked"
+lexile: 890
+filename: "gregory-maguire_wicked_890.json"
+```
+
+---
+
+## Metadata Access
+
+To fetch metadata for a given book:
+```bash
+python scripts/search_book.py --author "Gregory Maguire" --title "Wicked"
+```
+
+---
+
+## Lexile Score Lookup
+
+Use the `lexile_lookup.py` module in other projects:
+
 ```python
-query_params = {
-    "lexileScoresMin": "200-400",
-    "lexileScoresMax": "1800-",
-    "sortBy": "newlyadded",
-}
-```
+from services.lexile_lookup import get_lexile
 
----
-
-## Database
-
-Books are stored in a TinyDB database (`books.json`), each entry like:
-
-```json
-{
-  "isbn": "9780261103344",
-  "title": "The Hobbit",
-  "author": "J.R.R. Tolkien",
-  "libraries": ["https://nmmi.overdrive.com", "https://anotherlibrary.overdrive.com"],
-  "scraped_at": "2025-04-27T12:00:00Z"
-}
+score = get_lexile("Gregory Maguire", "Wicked")
+print(score)  # e.g. 890
 ```
 
 ---
 
 ## TODO
 
-- [ ] Improve error recovery for bad pages
-- [ ] Handle books with missing ISBNs more gracefully
-- [ ] Export results to `.jsonl` or CSV
-- [ ] Add CLI options to scrape single libraries
-- [ ] Add resume capability if scraping interrupted
+- [ ] Batch search or CSV import for lexile lookups
+- [ ] CLI to export metadata or index as CSV
+- [ ] Fuzzy/partial title and author search
+- [ ] Subject and level index enhancements
+- [ ] Remote sync or deduplication logic
 
 ---
 
 ## License
 
-This project is licensed under the MIT License.
+MIT License
