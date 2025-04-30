@@ -1,14 +1,18 @@
 from config.libraries import LIBRARIES
 from services.fetcher import PageFetcher
 from services.parser import BookParser
-from services.db import BookDatabase
+from services.files import FileStorage, sanitize_filename
+from services.index import IndexDatabase
+from services.utils import extract_lexile
 from utils.logger import setup_logger
 
 def main():
     logger = setup_logger()
     fetcher = PageFetcher()
     parser = BookParser()
-    db = BookDatabase()
+
+    storage = FileStorage("output")
+    index = IndexDatabase("index.db")
 
     query_params = {
         "lexileScoresMin": "200-400",
@@ -37,7 +41,17 @@ def main():
                 break
 
             for book in books:
-                db.insert_or_update_book(book, library_url, logger=logger)
+                author = book.get("firstCreatorName")
+                title = book.get("title")
+                lexile = extract_lexile(book)
+
+                if not (author and title and lexile):
+                    logger.warning(f"Skipping book with missing author/title/lexile: {title} by {author}")
+                    continue
+
+                filename = sanitize_filename(author, title, lexile)
+                storage.save_book_json(book, filename)
+                index.insert_record(author, title, lexile, filename)
 
             logger.info(f"Processed page {page}/{total_pages} for {library_url}")
 
